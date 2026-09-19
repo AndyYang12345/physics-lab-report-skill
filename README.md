@@ -54,10 +54,25 @@
 
 ### 使用 Skills CLI 一键安装（推荐）
 
-需要已安装 Node.js 和 npm：
+需要已安装 Node.js 和 npm。`--agent` 的取值见
+[skills 支持的 agent 列表](https://github.com/vercel-labs/skills#supported-agents)
+（注意是 `claude-code`，不是 `claude`）：
 
 ```bash
-npx skills add AndyYang12345/physics-lab-report-skill --agent claude --global
+# Claude Code
+npx skills add AndyYang12345/physics-lab-report-skill --agent claude-code --global
+
+# Codex
+npx skills add AndyYang12345/physics-lab-report-skill --agent codex --global
+
+# Cursor
+npx skills add AndyYang12345/physics-lab-report-skill --agent cursor --global
+```
+
+跳过交互确认：
+
+```bash
+npx skills add AndyYang12345/physics-lab-report-skill --agent claude-code --global --yes
 ```
 
 只查看仓库中可安装的 Skill，不执行安装：
