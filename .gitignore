@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.env
+
+# 个人信息 —— 绝对不要提交
+.profile
+profile.json
+
+# 生成的报告与中间产物
+提交/
+.build/
+templates/
+*.docx
+*.pdf
+
+# LibreOffice 锁文件
+.~lock.*
+
+# 编辑器 / 系统
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
