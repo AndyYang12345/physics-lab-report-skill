@@ -95,8 +95,11 @@ def safe_name(s):
 
 
 def submission_name(prof, experiment, ext='pdf'):
-    """提交文件名：座位号-姓名-实验名称.pdf"""
-    return '%s-%s-%s.%s' % (safe_name(prof['座位号']),
+    """提交文件名：座位号_姓名_实验名称.pdf
+
+    现行要求用下划线分隔；早期版本用连字符，已废弃。
+    """
+    return '%s_%s_%s.%s' % (safe_name(prof['座位号']),
                             safe_name(prof['姓名']),
                             safe_name(experiment), ext)
 
@@ -209,6 +212,30 @@ def find_table_by_cell(doc, text, row=0, col=0):
 # ==========================================================================
 # 组装报告（预习模式）
 # ==========================================================================
+def strip_front_matter(doc):
+    """删掉正文标题之前的所有内容：封面页、学生实验守则、撰写要求。
+
+    现行要求是「后续实验报告不再需要封面页和实验守则页」——那两页只有绪论课作业才交。
+    锚点用正文标题段（文本恰为「实验」），换模板也不用改这里。返回删除的元素个数。
+    """
+    body = doc.element.body
+    head = None
+    for p in doc.paragraphs:                 # doc.paragraphs 只含顶层段落
+        if p.text.strip() == '实验':
+            head = p._element
+            break
+    if head is None:
+        return 0
+    n = 0
+    for child in list(body):
+        if child is head:
+            break
+        if child.tag in (qn('w:p'), qn('w:tbl')):
+            body.remove(child)
+            n += 1
+    return n
+
+
 def _missing_template():
     raise FileNotFoundError(
         '找不到空白模板：%s\n'
@@ -216,7 +243,7 @@ def _missing_template():
         '准备一份空白模板，放到该路径，或设环境变量 PHYSLAB_TEMPLATE 指向它。' % TEMPLATE)
 
 
-def build_report(spec, out_path, profile=None):
+def build_report(spec, out_path, profile=None, front_matter=False):
     _need_docx()
     """
     spec = {
@@ -239,13 +266,18 @@ def build_report(spec, out_path, profile=None):
 
     doc = docx.Document(str(TEMPLATE)) if TEMPLATE.exists() else _missing_template()
 
-    # ---- 1. 封面 5 个字段 ----
-    cover = find_table_by_cell(doc, '课程名称')
-    for i, key in enumerate(['课程名称', '姓名', '学号', '专业班级', '开课学期']):
-        cell = cover.cell(i, 1)
-        p = cell.paragraphs[0] if cell.paragraphs else cell.add_paragraph()
-        style_para(p, align=WD_ALIGN_PARAGRAPH.CENTER)
-        style_run(p.add_run(), prof[key], size=SZ_COVER, bold=True)
+    # 实验报告默认不要封面/守则/撰写要求；绪论课作业才需要（front_matter=True）
+    if not front_matter:
+        strip_front_matter(doc)
+
+    # ---- 1. 封面 5 个字段（仅在保留封面时）----
+    if front_matter:
+        cover = find_table_by_cell(doc, '课程名称')
+        for i, key in enumerate(['课程名称', '姓名', '学号', '专业班级', '开课学期']):
+            cell = cover.cell(i, 1)
+            p = cell.paragraphs[0] if cell.paragraphs else cell.add_paragraph()
+            style_para(p, align=WD_ALIGN_PARAGRAPH.CENTER)
+            style_run(p.add_run(), prof[key], size=SZ_COVER, bold=True)
 
     # ---- 2. 标题：模板里只有“实验 ”，追加名称 ----
     head = None
@@ -329,6 +361,67 @@ def _insert_figure(cell, img, caption, width_cm):
 # ==========================================================================
 # 填原始数据（数据模式）
 # ==========================================================================
+def _add_table(cell, spec):
+    """在单元格里建一张带框线的表。spec = {header, rows, widths?}
+
+    header 每列可以是字符串，也可以是 [[文本, 是否下标], ...]（真下标）。
+    """
+    ncol = len(spec['header'])
+    widths = spec.get('widths') or [int(8000 / ncol)] * ncol
+    sub = cell.add_table(rows=1 + len(spec['rows']), cols=ncol)
+    sub.alignment = WD_TABLE_ALIGNMENT.CENTER
+    sub.autofit = False
+    set_table_borders(sub)
+
+    def put(c, parts, bold=False):
+        par = c.paragraphs[0]
+        style_para(par, align=WD_ALIGN_PARAGRAPH.CENTER, line=1.0)
+        if isinstance(parts, str):
+            parts = [(parts, False)]
+        for txt, is_sub in parts:
+            style_run(par.add_run(), txt, size=SZ_TABLE, bold=bold, sub=is_sub)
+
+    for j, col in enumerate(spec['header']):
+        put(sub.cell(0, j), col, bold=True)
+    for i, row in enumerate(spec['rows'], start=1):
+        for j, v in enumerate(row):
+            put(sub.cell(i, j), v)
+    for j, w in enumerate(widths):
+        for r in sub.rows:
+            r.cells[j].width = Pt(w / 20)
+    return sub
+
+
+def fill_post(doc, sections):
+    """填「数据处理 / 分析讨论」表。
+
+    sections 里每项三选一：
+      {"h": "数据处理："}                      加粗小节标题
+      {"p": "……"}                              正文段
+      {"t": {"header": [...], "rows": [...]}}   结果表
+    """
+    t = find_table_by_cell(doc, '数据处理')
+    cell = t.cell(0, 0)
+    clear_cell(cell)
+    for item in sections:
+        if 'h' in item:
+            cell_para(cell, item['h'], bold=True)
+        elif 'p' in item:
+            cell_para(cell, item['p'])
+        elif 't' in item:
+            _add_table(cell, item['t'])
+        elif 'blank' in item:
+            cell.add_paragraph()
+    # 行高按内容走，只留一个像样的下限
+    trPr = t.rows[0]._tr.find(qn('w:trPr'))
+    if trPr is not None:
+        h = trPr.find(qn('w:trHeight'))
+        if h is not None:
+            h.set(qn('w:val'), '6000')
+            h.set(qn('w:hRule'), 'atLeast')
+    return t
+
+
 def fill_data(spec, docx_path, profile=None):
     _need_docx()
     """
@@ -337,7 +430,8 @@ def fill_data(spec, docx_path, profile=None):
       "title": "最小偏向角测量数据",          # 数据表上方的小标题，可省略
       "header": [ [...每列文本或 [文本,是否下标]...] ],
       "rows":   [ [...], ... ],
-      "widths": [800, 1440, ...]              # dxa，省略则均分
+      "widths": [800, 1440, ...],             # dxa，省略则均分
+      "post": [ ... ]                         # 可选：数据处理/分析讨论内容
     }
     """
     prof = profile or read_profile()
@@ -367,39 +461,15 @@ def fill_data(spec, docx_path, profile=None):
         cell_para(big, spec['title'], bold=True,
                   align=WD_ALIGN_PARAGRAPH.LEFT, line=1.2)
 
-    ncol = len(spec['header'])
-    widths = spec.get('widths') or [int(8000 / ncol)] * ncol
-    sub = big.add_table(rows=1 + len(spec['rows']), cols=ncol)
-    sub.alignment = WD_TABLE_ALIGNMENT.CENTER
-    sub.autofit = False
-    set_table_borders(sub)
-
-    def put(cell, parts):
-        p = cell.paragraphs[0]
-        style_para(p, align=WD_ALIGN_PARAGRAPH.CENTER, line=1.0)
-        if isinstance(parts, str):
-            parts = [(parts, False)]
-        for txt, is_sub in parts:
-            style_run(p.add_run(), txt, size=SZ_TABLE, sub=is_sub)
-
-    for j, col in enumerate(spec['header']):
-        c = sub.cell(0, j)
-        p = c.paragraphs[0]
-        style_para(p, align=WD_ALIGN_PARAGRAPH.CENTER, line=1.0)
-        parts = col if isinstance(col, list) else [(col, False)]
-        for txt, is_sub in parts:
-            style_run(p.add_run(), txt, size=SZ_TABLE, bold=True, sub=is_sub)
-    for i, row in enumerate(spec['rows'], start=1):
-        for j, v in enumerate(row):
-            put(sub.cell(i, j), v)
-
-    for j, w in enumerate(widths):
-        for r in sub.rows:
-            r.cells[j].width = Pt(w / 20)
+    _add_table(big, spec)
 
     big.add_paragraph()
 
-    # ---- 3. 原始数据记录表单独起页（21cm 大格会把表头挤到上一页）----
+    # ---- 3. 数据处理 / 分析讨论 ----
+    if spec.get('post'):
+        fill_post(doc, spec['post'])
+
+    # ---- 4. 原始数据记录表单独起页（大格会把表头挤到上一页）----
     try:
         find_para(doc, '原始数据记录表').paragraph_format.page_break_before = True
     except LookupError:
