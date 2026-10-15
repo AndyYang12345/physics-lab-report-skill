@@ -236,6 +236,40 @@ def strip_front_matter(doc):
     return n
 
 
+def shrink_record_sheet_row(doc, twips=8500):
+    """把记录表最后一行（大格）的行高降下来。
+
+    模板里那格是「至少 21cm」，加上表头就超出一页，表头和大格会被拆到两页。
+    数据是打进去的，按内容自适应即可，只留一个够体面的最小高度。
+    """
+    try:
+        t = find_table_by_cell(doc, '实验名称')
+    except LookupError:
+        return False
+    trPr = t.rows[-1]._tr.find(qn('w:trPr'))
+    if trPr is None:
+        return False
+    h = trPr.find(qn('w:trHeight'))
+    if h is None:
+        return False
+    h.set(qn('w:val'), str(twips))
+    h.set(qn('w:hRule'), 'atLeast')
+    return True
+
+
+def page_break_before_record_sheet(doc):
+    """让「原始数据记录表」单独起页。
+
+    记录表的行高很大，加上表头会超出一页，不设分页符就会和正文挤在一起。
+    建报告阶段就要设好——预习报告只跑 build，不会走 fill_data。
+    """
+    try:
+        find_para(doc, '原始数据记录表').paragraph_format.page_break_before = True
+        return True
+    except LookupError:
+        return False
+
+
 def _missing_template():
     raise FileNotFoundError(
         '找不到空白模板：%s\n'
@@ -321,6 +355,10 @@ def build_report(spec, out_path, profile=None, front_matter=False):
 
     # ---- 5. 原始数据记录表表头（名称/姓名现在就填，日期等实验后）----
     fill_record_head(doc, prof, spec['experiment'], spec.get('date') or '')
+
+    # ---- 6. 原始数据记录表单独起页 + 大格降高（预习阶段也要，别等 fill_data）----
+    shrink_record_sheet_row(doc)
+    page_break_before_record_sheet(doc)
 
     doc.save(str(out_path))
     return out_path
@@ -445,15 +483,7 @@ def fill_data(spec, docx_path, profile=None):
     # ---- 2. 原始数据记录表 ----
     t = fill_record_head(doc, prof, spec['experiment'], spec.get('date') or '')
 
-    # 大格原为“至少 21cm”，加上表头后一页放不下，会把表头和数据拆到两页。
-    # 数据是打进去的，按内容自适应即可，只留一个够体面的最小高度。
-    row = t.rows[-1]
-    trPr = row._tr.find(qn('w:trPr'))
-    if trPr is not None:
-        h = trPr.find(qn('w:trHeight'))
-        if h is not None:
-            h.set(qn('w:val'), '8500')      # 15 cm
-            h.set(qn('w:hRule'), 'atLeast')
+    shrink_record_sheet_row(doc)      # 大格降高，避免表头与数据分页
 
     big = t.cell(2, 0)
     clear_cell(big)
@@ -469,11 +499,8 @@ def fill_data(spec, docx_path, profile=None):
     if spec.get('post'):
         fill_post(doc, spec['post'])
 
-    # ---- 4. 原始数据记录表单独起页（大格会把表头挤到上一页）----
-    try:
-        find_para(doc, '原始数据记录表').paragraph_format.page_break_before = True
-    except LookupError:
-        pass
+    # ---- 4. 原始数据记录表单独起页（build 阶段已设，这里再确保一次）----
+    page_break_before_record_sheet(doc)
 
     doc.save(str(docx_path))
     return docx_path
