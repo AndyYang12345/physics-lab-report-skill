@@ -225,9 +225,13 @@ python scripts/lab.py doctor
 1. **LibreOffice 不认表格单元格里的「与下段同页」。** 图和题注仍可能被分页拆开。
    代码里设了 `keep_with_next`（Word 里有效），但**交付前必须把 PDF 转图目视核对**。
    若被拆开，把图缩小 0.5–1cm（`width_cm`）通常就能连同题注放回同一页。
-2. **原始数据记录表的大行高**（本模板是"至少 21cm"）会把表头挤到上一页、
-   数据挤到下一页。`fill_data()` 会自动把它降到 15cm 自适应，并给「原始数据记录表」
-   标题加 `page_break_before`，整张表落在独立一页。换模板后要重新验证这一点。
+2. **原始数据记录表必须独占一页。** 模板里那格是「至少 21cm」，加上表头就超出一页，
+   表头和大格会被拆到两页。`build_report()` 与 `fill_data()` 都会调用
+   `shrink_record_sheet_row()`（行高降到 15cm 自适应）和
+   `page_break_before_record_sheet()`（标题另起一页）。
+   **这两个处理在建报告阶段就必须生效**——预习报告只跑 `build` 不走 `fill_data`；
+   早期版本把逻辑只写在 `fill_data()` 里，导致预习稿的记录表与正文挤在一起。
+   换模板后要重新验证。
 3. **别和坏掉的依赖较劲。** 系统 Python 的 matplotlib 可能因 numpy 2.x ABI 不兼容
    而无法 import。建一个专用虚拟环境/conda 环境，一次解决，比用 Pillow 手绘绕过去划算。
 4. **中文字体**：`figstyle.setup_font()` 会自动挑系统里的 CJK 字体，

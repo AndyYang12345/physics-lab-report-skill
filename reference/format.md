@@ -46,7 +46,7 @@
 | 正文表 | 表格 `cell(0,0)` 文本以 `实验目的` 开头 | `build_report()` |
 | 课后表 | 表格 `cell(0,0)` 文本以 `数据处理` 开头 | `fill_post()` |
 | 原始数据记录表 | 表格 `cell(0,0)` 文本 = `实验名称` | `fill_record_head()` |
-| 记录表标题 | 段落以 `原始数据记录表` 开头（在此加 page_break_before） | `fill_data()` |
+| 记录表标题 | 段落以 `原始数据记录表` 开头（在此加 page_break_before） | `page_break_before_record_sheet()` |
 | 正文标题 | 段落文本恰好 = `实验`（`strip_front_matter` 以它为界删封面） | `strip_front_matter()` |
 
 **换模板时改这些锚点即可**，其余逻辑不用动。
@@ -97,9 +97,10 @@
 
 - **正文表**行高较大（本模板 20cm，atLeast），内容含插图超长时会自动跨页增高——
   正常，不要试图压缩。
-- **原始数据记录表**的大行高会把表头挤到上一页。`fill_data()` 因此做了两件事：
-  把该行降到 15cm 自适应，并给「原始数据记录表」标题加 `page_break_before`。
-  **别删这些处理**，否则表头和数据会被拆到两页。
+- **原始数据记录表必须独占一页**，否则大行高会把表头挤到上一页。为此
+  `build_report()` 与 `fill_data()` 都调用 `shrink_record_sheet_row()`
+  （行高降到 15cm 自适应）和 `page_break_before_record_sheet()`（标题另起一页）。
+  **两个处理在建报告阶段就生效**，因为预习报告只走 `build`。别删。
 - LibreOffice **不认表格单元格内的 `keep_with_next`**，插图与题注仍可能被拆页。
   代码已设该属性（Word 里有效），但**每次导出后仍要目视核对 PDF**。
 
