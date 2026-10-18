@@ -132,8 +132,17 @@ def cmd_export(args):
         sys.exit('找不到 %s —— 请先跑 build' % docx_path)
     pdf = K.SUBMIT / K.submission_name(prof, exp)
     K.export_pdf(docx_path, pdf)
+
+    # 有附录图（老师签字的原始数据记录表照片）就附在最后
+    app_dir = K.BUILD / exp / 'appendix'
+    n0 = K.pdf_pages(pdf)
+    K.append_appendix(pdf, app_dir)
+    n1 = K.pdf_pages(pdf)
+
     print('✓ 已导出 %s' % pdf)
-    print('  页数：%d' % K.pdf_pages(pdf))
+    print('  页数：%d' % n1)
+    if n1 > n0:
+        print('  已附加附录 %d 页（%s）' % (n1 - n0, app_dir))
     return 0
 
 

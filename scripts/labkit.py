@@ -509,6 +509,78 @@ def fill_data(spec, docx_path, profile=None):
 # ==========================================================================
 # 导出 PDF
 # ==========================================================================
+def build_appendix_pdf(images, out_pdf, title='附：原始数据记录表（指导老师签字原件）'):
+    """把图片做成 A4 附录页 PDF（每张一页，居中，等比缩放）。
+
+    用于把老师签字的原始数据记录表照片附在报告最后。
+    借 python-docx 排版 + LibreOffice 转 PDF，页面尺寸与正文一致。
+    """
+    _need_docx()
+    from docx.shared import Cm as _Cm
+    doc = docx.Document()
+    sec = doc.sections[0]
+    # 附录页故意用小页边距：手写记录表要尽量放大才看得清
+    sec.page_width, sec.page_height = _Cm(21.0), _Cm(29.7)
+    sec.top_margin = sec.bottom_margin = _Cm(1.5)
+    sec.left_margin = sec.right_margin = _Cm(1.5)
+    usable_w, usable_h = 18.0, 26.7            # cm
+
+    for i, img in enumerate(images):
+        if i:
+            doc.add_page_break()
+        p = doc.add_paragraph()
+        style_para(p, align=WD_ALIGN_PARAGRAPH.CENTER)
+        style_run(p.add_run(), title, size=SZ_CAP + 3, bold=True)
+        p2 = doc.add_paragraph()
+        style_para(p2, align=WD_ALIGN_PARAGRAPH.CENTER)
+
+        # 统一用 PIL 重编码：手机照片常缺 JFIF APP0 段（ffd8ffdb），
+        # python-docx 会报 UnrecognizedImageError；重编码顺带处理 EXIF 旋转。
+        from PIL import Image, ImageOps
+        im = ImageOps.exif_transpose(Image.open(img)).convert('RGB')
+        w_px, h_px = im.size
+        ratio = h_px / w_px
+        w = usable_w
+        h = w * ratio
+        if h > usable_h - 1.8:                 # 给标题留 1.8cm
+            h = usable_h - 1.8
+            w = h / ratio
+        norm = Path(out_pdf).with_suffix('.img%d.jpg' % i)
+        im.save(str(norm), 'JPEG', quality=92)
+        p2.add_run().add_picture(str(norm), width=_Cm(w))
+        norm.unlink(missing_ok=True)
+
+    tmp = Path(out_pdf).with_suffix('.appendix.docx')
+    doc.save(str(tmp))
+    export_pdf(tmp, out_pdf)
+    tmp.unlink(missing_ok=True)
+    return out_pdf
+
+
+def append_appendix(pdf_path, image_dir):
+    """把 image_dir 里的图片作为附录页追加到 pdf_path 末尾。
+
+    image_dir 不存在或没有图片时原样返回，不产生任何副作用。
+    """
+    pdf_path = Path(pdf_path)
+    d = Path(image_dir)
+    if not d.is_dir():
+        return pdf_path
+    imgs = sorted([f for f in d.iterdir()
+                   if f.suffix.lower() in ('.jpg', '.jpeg', '.png', '.bmp', '.tif', '.tiff')])
+    if not imgs:
+        return pdf_path
+
+    app = pdf_path.with_name(pdf_path.stem + '.appendix.pdf')
+    build_appendix_pdf(imgs, app)
+    merged = pdf_path.with_name(pdf_path.stem + '.merged.pdf')
+    subprocess.run(['pdfunite', str(pdf_path), str(app), str(merged)],
+                   check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    merged.replace(pdf_path)
+    app.unlink(missing_ok=True)
+    return pdf_path
+
+
 def export_pdf(docx_path, pdf_path=None, timeout=300):
     docx_path = Path(docx_path)
     pdf_path = Path(pdf_path) if pdf_path else docx_path.with_suffix('.pdf')
