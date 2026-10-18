@@ -95,11 +95,11 @@ def safe_name(s):
 
 
 def submission_name(prof, experiment, ext='pdf'):
-    """提交文件名：座位号_姓名_实验名称.pdf
+    """提交文件名：座位号-姓名-实验名称.pdf
 
-    现行要求用下划线分隔；早期版本用连字符，已废弃。
+    用连字符（横杠）分隔。曾一度改成下划线，现已改回，勿再改动。
     """
-    return '%s_%s_%s.%s' % (safe_name(prof['座位号']),
+    return '%s-%s-%s.%s' % (safe_name(prof['座位号']),
                             safe_name(prof['姓名']),
                             safe_name(experiment), ext)
 

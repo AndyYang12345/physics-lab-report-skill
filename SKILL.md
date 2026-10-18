@@ -1,6 +1,6 @@
 ---
 name: physics-lab-report
-description: 生成并提交大学物理实验报告。用户给出上课内容（实验名称）时进入预习模式，编写实验目的/仪器/原理/操作步骤并绘制原理图；用户给出原始数据时进入数据模式，填入实验日期与原始数据记录表。两种模式都以「座位号_姓名_实验名称.pdf」导出到提交目录。Use when the user asks to write or update a 大学物理实验报告, 预习报告, fill raw measurement data, draw 原理图, or export the lab report as a submittable PDF.
+description: 生成并提交大学物理实验报告。用户给出上课内容（实验名称）时进入预习模式，编写实验目的/仪器/原理/操作步骤并绘制原理图；用户给出原始数据时进入数据模式，填入实验日期与原始数据记录表。两种模式都以「座位号-姓名-实验名称.pdf」导出到提交目录。Use when the user asks to write or update a 大学物理实验报告, 预习报告, fill raw measurement data, draw 原理图, or export the lab report as a submittable PDF.
 ---
 
 # 大学物理实验报告
@@ -62,7 +62,8 @@ python scripts/lab.py doctor
    缺失的字段**必须先问用户**，绝不猜测、绝不编造学号姓名。
 4. **格式**：正文宋体、小四、1.5 倍行距；图表题注宋体五号居中。
    这是本模板的要求；若你的学校模板不同，改 `labkit.py` 顶部的格式常量。
-5. **提交文件名**：`座位号_姓名_实验名称.pdf`——**用下划线分隔**（早期用连字符，已废弃）。
+5. **提交文件名**：`座位号-姓名-实验名称.pdf`——**用连字符（横杠）分隔**。
+   曾一度改为下划线，现已确认改回连字符，别再动。
    例：`23_杨思源_分光计的调整与使用.pdf`。
 6. **实验报告不要封面页和守则页。** 封面页（校徽 + 课程名称…）与学生实验守则 /
    撰写要求页**只有绪论课作业才交**，后续实验报告一律不要。`build_report()` 默认
