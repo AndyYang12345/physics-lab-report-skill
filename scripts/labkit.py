@@ -142,6 +142,28 @@ def clear_cell(cell):
         p._element.getparent().remove(p._element)
 
 
+_SUB_RE = re.compile(r'~([^~]+)~')
+
+
+def rich_parts(text):
+    """把 "U~AB~ 与 R~x0~" 解析成 [(文本, 是否下标), ...]。
+
+    正文里需要真下标时（U_AB、R_x 这类没有 Unicode 下标字符的）用 ~...~ 标记，
+    比混用 Unicode 下标字符规范得多。没有标记时返回 None，走普通段落。
+    """
+    if '~' not in text:
+        return None
+    parts, pos = [], 0
+    for m in _SUB_RE.finditer(text):
+        if m.start() > pos:
+            parts.append((text[pos:m.start()], False))
+        parts.append((m.group(1), True))
+        pos = m.end()
+    if pos < len(text):
+        parts.append((text[pos:], False))
+    return parts or None
+
+
 def cell_para(cell, text, *, bold=False, size=SZ_BODY, align=None,
               indent=False, line=LINE, sub_parts=None):
     """
@@ -234,6 +256,28 @@ def strip_front_matter(doc):
             body.remove(child)
             n += 1
     return n
+
+
+def shrink_post_row(doc, twips=1400):
+    """把「数据处理 / 分析讨论」那一行的最小行高降下来。
+
+    模板里这行是「至少 14cm」，预习阶段内容为空，会撑出一整页空白。
+    atLeast 会随内容自动长高，所以下限给小一点即可。
+    """
+    for t in doc.tables:
+        for row in t.rows:
+            txt = ''.join(c.text for c in row.cells)
+            if '数据处理' in txt or '分析讨论' in txt:
+                trPr = row._tr.find(qn('w:trPr'))
+                if trPr is None:
+                    continue
+                h = trPr.find(qn('w:trHeight'))
+                if h is None:
+                    continue
+                h.set(qn('w:val'), str(twips))
+                h.set(qn('w:hRule'), 'atLeast')
+                return True
+    return False
 
 
 def shrink_record_sheet_row(doc, twips=8500):
@@ -346,7 +390,7 @@ def build_report(spec, out_path, profile=None, front_matter=False):
         if 'h' in item:                                   # 小节标题（加粗）
             cell_para(cell, item['h'], bold=True)
         elif 'p' in item:                                 # 正文段
-            cell_para(cell, item['p'])
+            cell_para(cell, item['p'], sub_parts=rich_parts(item['p']))
         elif 'f' in item:                                 # 插图 + 题注
             _insert_figure(cell, item['f'], item.get('cap', ''),
                            item.get('width_cm', 12.6))
@@ -358,6 +402,7 @@ def build_report(spec, out_path, profile=None, front_matter=False):
 
     # ---- 6. 原始数据记录表单独起页 + 大格降高（预习阶段也要，别等 fill_data）----
     shrink_record_sheet_row(doc)
+    shrink_post_row(doc)
     page_break_before_record_sheet(doc)
 
     doc.save(str(out_path))
@@ -389,11 +434,16 @@ def _insert_figure(cell, img, caption, width_cm):
     run = p.add_run()
     run.add_picture(str(img), width=Cm(width_cm))
 
-    # 题注
+    # 题注（支持 ~...~ 真下标）
     if caption:
         cp = cell.add_paragraph()
         style_para(cp, align=WD_ALIGN_PARAGRAPH.CENTER)
-        style_run(cp.add_run(), caption, size=SZ_CAP)
+        parts = rich_parts(caption)
+        if parts:
+            for t, is_sub in parts:
+                style_run(cp.add_run(), t, size=SZ_CAP, sub=is_sub)
+        else:
+            style_run(cp.add_run(), caption, size=SZ_CAP)
 
 
 # ==========================================================================
@@ -445,7 +495,7 @@ def fill_post(doc, sections):
         if 'h' in item:
             cell_para(cell, item['h'], bold=True)
         elif 'p' in item:
-            cell_para(cell, item['p'])
+            cell_para(cell, item['p'], sub_parts=rich_parts(item['p']))
         elif 't' in item:
             _add_table(cell, item['t'])
         elif 'blank' in item:
